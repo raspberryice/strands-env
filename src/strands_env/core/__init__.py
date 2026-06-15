@@ -15,9 +15,11 @@
 """Core module: environment, types, and model factories."""
 
 from .environment import AsyncEnvFactory, Environment, EnvironmentConfig
+from .hooks import StopOnToolHook
 from .models import ModelFactory
 from .types import (
     Action,
+    AgentToolStopError,
     Observation,
     RewardFunction,
     RewardResult,
@@ -29,6 +31,7 @@ from .types import (
 
 __all__ = [
     "Action",
+    "AgentToolStopError",
     "AsyncEnvFactory",
     "Environment",
     "EnvironmentConfig",
@@ -37,6 +40,7 @@ __all__ = [
     "RewardFunction",
     "RewardResult",
     "StepResult",
+    "StopOnToolHook",
     "TaskContext",
     "TerminationReason",
     "TokenObservation",

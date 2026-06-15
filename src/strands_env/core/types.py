@@ -163,6 +163,18 @@ class RewardFunction(ABC):
 # ---------------------------------------------------------------------------
 
 
+class AgentToolStopError(Exception):
+    """Raised to end the agent loop cleanly when a terminal tool is called.
+
+    Strands ends an episode only on a no-tool-call turn or a `ToolLimiter` cap.
+    A tool such as `done` that is *meant* to end the episode otherwise has no
+    effect on the loop. `StopOnToolHook` raises this once such a tool's iteration
+    completes, and `TerminationReason.from_error` maps it to `TASK_COMPLETE` — an
+    explicit, model-requested completion, not a truncation or error — so it does
+    not emit the error-path warning that other terminations do.
+    """
+
+
 class TerminationReason(str, Enum):
     """Why an episode ended."""
 
@@ -212,6 +224,12 @@ class TerminationReason(str, Enum):
         cause: BaseException | None = error
         while isinstance(cause, EventLoopException) and cause.__cause__ is not None:
             cause = cause.__cause__
+
+        # Explicit, model-requested completion via a terminal tool (e.g. `done`,
+        # raised by `StopOnToolHook`). This is a clean stop, not an error, so
+        # return TASK_COMPLETE and skip the error-path warning below.
+        if isinstance(cause, AgentToolStopError):
+            return cls.TASK_COMPLETE
 
         match cause:
             case MaxTokensReachedException():

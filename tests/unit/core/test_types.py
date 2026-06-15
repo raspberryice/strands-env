@@ -23,6 +23,7 @@ from strands_sglang import MaxToolCallsReachedError, MaxToolIterationsReachedErr
 
 from strands_env.core.types import (
     Action,
+    AgentToolStopError,
     Observation,
     RewardResult,
     StepResult,
@@ -175,6 +176,17 @@ class TestObservation:
 class TestTerminationReason:
     def test_none_error_is_task_complete(self):
         assert TerminationReason.from_error(None) == TerminationReason.TASK_COMPLETE
+
+    def test_agent_tool_stop_is_task_complete(self):
+        # An explicit terminal-tool stop (e.g. `done`) is a clean completion.
+        assert TerminationReason.from_error(AgentToolStopError("done")) == TerminationReason.TASK_COMPLETE
+
+    def test_agent_tool_stop_wrapped_is_task_complete(self):
+        # Strands wraps hook-raised exceptions in EventLoopException; from_error
+        # unwraps the cause chain before classifying.
+        error = EventLoopException(Exception())
+        error.__cause__ = AgentToolStopError("done")
+        assert TerminationReason.from_error(error) == TerminationReason.TASK_COMPLETE
 
     def test_max_tool_iterations(self):
         error = EventLoopException(Exception())
