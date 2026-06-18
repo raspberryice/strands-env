@@ -14,11 +14,12 @@
 
 """Unit tests for environment control hooks."""
 
+import logging
 from types import SimpleNamespace
 
 import pytest
 
-from strands_env.core.hooks import StopOnToolHook
+from strands_env.core.hooks import _STRANDS_EVENT_LOOP_LOGGER, StopOnToolHook
 from strands_env.core.types import AgentToolStopError
 
 
@@ -67,3 +68,56 @@ class TestStopOnToolHook:
         hook.reset()
         assert hook._stop_pending is False
         assert hook.stop_tool_name is None
+
+
+class TestStopLogFilter:
+    """Constructing the hook installs a filter that drops strands' "cycle failed"
+    traceback for AgentToolStopError (strands logs every cycle exception), while
+    leaving real errors logged."""
+
+    def _capture(self):
+        records: list[logging.LogRecord] = []
+
+        class _Cap(logging.Handler):
+            def emit(self, record):
+                records.append(record)
+
+        el = logging.getLogger(_STRANDS_EVENT_LOOP_LOGGER)
+        handler = _Cap()
+        el.addHandler(handler)
+        el.setLevel(logging.DEBUG)
+        prev_propagate = el.propagate
+        el.propagate = False
+        StopOnToolHook({"done"})  # installs the suppression filter (idempotent)
+        return el, handler, records, prev_propagate
+
+    def test_suppresses_agent_tool_stop_traceback(self):
+        el, handler, records, prev = self._capture()
+        try:
+            try:
+                raise AgentToolStopError("done")
+            except Exception:
+                el.exception("cycle failed")  # bare
+            try:
+                raise AgentToolStopError("done")
+            except Exception as inner:
+                raise RuntimeError("wrapper") from inner
+        except Exception:
+            el.exception("cycle failed")  # wrapped via __cause__
+        finally:
+            keep = list(records)
+            el.removeHandler(handler)
+            el.propagate = prev
+        assert keep == [], "AgentToolStopError 'cycle failed' records should be dropped"
+
+    def test_keeps_unrelated_errors(self):
+        el, handler, records, prev = self._capture()
+        try:
+            raise ValueError("real boom")
+        except Exception:
+            el.exception("cycle failed")
+        finally:
+            keep = list(records)
+            el.removeHandler(handler)
+            el.propagate = prev
+        assert len(keep) == 1 and isinstance(keep[0].exc_info[1], ValueError)

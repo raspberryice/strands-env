@@ -24,6 +24,40 @@ from .types import AgentToolStopError
 
 logger = logging.getLogger(__name__)
 
+# Strands' event loop logs `logger.exception("cycle failed")` for ANY exception
+# raised inside a cycle before re-raising it (strands/event_loop/event_loop.py).
+# `StopOnToolHook` raises `AgentToolStopError` on purpose to end the episode
+# cleanly, so without this a full traceback would be printed on essentially every
+# terminated trajectory (a `done()` call ends ~every episode). This filter drops
+# only those records — any other "cycle failed" (a real error) still logs.
+_STRANDS_EVENT_LOOP_LOGGER = "strands.event_loop.event_loop"
+_STOP_LOG_FILTER_INSTALLED = False
+
+
+class _SuppressAgentToolStopTraceback(logging.Filter):
+    """Drop log records whose exception chain is an `AgentToolStopError`."""
+
+    def filter(self, record: logging.LogRecord) -> bool:  # noqa: A003 — logging.Filter API
+        exc = record.exc_info[1] if record.exc_info else None
+        while exc is not None:
+            if isinstance(exc, AgentToolStopError):
+                return False
+            exc = exc.__cause__
+        return True
+
+
+def _install_stop_log_filter() -> None:
+    """Attach the traceback-suppression filter to strands' event-loop logger.
+
+    Idempotent: safe to call repeatedly (per-env construction); installs once per
+    process.
+    """
+    global _STOP_LOG_FILTER_INSTALLED
+    if _STOP_LOG_FILTER_INSTALLED:
+        return
+    logging.getLogger(_STRANDS_EVENT_LOOP_LOGGER).addFilter(_SuppressAgentToolStopTraceback())
+    _STOP_LOG_FILTER_INSTALLED = True
+
 
 class StopOnToolHook(HookProvider):
     """End the agent loop after a designated "terminal" tool is called.
@@ -58,6 +92,9 @@ class StopOnToolHook(HookProvider):
         """
         self.stop_tools = set(stop_tools)
         self.reset()
+        # Suppress strands' "cycle failed" traceback for our clean-stop exception
+        # (installed once per process; see _install_stop_log_filter).
+        _install_stop_log_filter()
 
     def reset(self) -> None:
         """Reset state for a new invocation."""
