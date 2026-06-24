@@ -25,7 +25,12 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 from strands.types.content import Message, Messages
 from strands.types.exceptions import ContextWindowOverflowException, EventLoopException, MaxTokensReachedException
-from strands_sglang import MaxToolCallsReachedError, MaxToolIterationsReachedError, TokenManager
+from strands_sglang import (
+    GenerationAbortedException,
+    MaxToolCallsReachedError,
+    MaxToolIterationsReachedError,
+    TokenManager,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -181,6 +186,7 @@ class TerminationReason(str, Enum):
     NOT_TERMINATED = "not_terminated"
     TASK_COMPLETE = "task_complete"
     MAX_TOKENS_REACHED = "max_tokens_reached"
+    GENERATION_ABORTED = "generation_aborted"
     CONTEXT_WINDOW_OVERFLOW = "context_window_overflow"
     MAX_TOOL_ITERATIONS_REACHED = "max_tool_iterations_reached"
     MAX_TOOL_CALLS_REACHED = "max_tool_calls_reached"
@@ -232,6 +238,12 @@ class TerminationReason(str, Enum):
             return cls.TASK_COMPLETE
 
         match cause:
+            case GenerationAbortedException():
+                # Server aborted the in-flight /generate (e.g. weight-sync
+                # pause_generation(mode="abort")) and returned a partial. Not a
+                # clean stop — surface as an abort so the bridge neutralizes +
+                # retries instead of training the partial as a reward-0 completion.
+                reason = cls.GENERATION_ABORTED
             case MaxTokensReachedException():
                 reason = cls.MAX_TOKENS_REACHED
             case ContextWindowOverflowException():
