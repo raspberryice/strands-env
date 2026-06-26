@@ -83,6 +83,14 @@ class Environment:
             else None
         )
 
+        # Live agent + tool limiter from the most recent `step`, stashed so a cancelled or
+        # timed-out step (e.g. `asyncio.wait_for` cancelling mid-`invoke_async`) can still
+        # surface partial state via `partial_observation()` — the env outlives the cancellation,
+        # the in-step `agent` does not. `None` until the first `step`.
+        self._last_agent: Agent | None = None
+        self._last_tool_limiter: ToolLimiter | None = None
+        self._last_conversation_history_len: int = 0
+
     async def reset(self) -> None:
         """Reset for a new episode. Override for environment-specific init.
 
@@ -94,6 +102,37 @@ class Environment:
             - Paired with `cleanup` which tears down what `reset` sets up.
         """
         pass
+
+    def partial_observation(self) -> Observation | None:
+        """Reconstruct an `Observation` from the most recent step's partial state.
+
+        For a step cancelled or timed-out before its normal Observation build runs (e.g.
+        `asyncio.wait_for` cancelling mid-`invoke_async`, which raises `CancelledError` past the
+        `except Exception` below): rebuilds `step_messages`, the token observation, and metrics
+        from the live agent + tool limiter stashed on the env in `step`. Mirrors the build at the
+        end of `step`. Returns `None` if no step has run.
+        """
+        agent = self._last_agent
+        if agent is None:
+            return None
+        step_messages = list(agent.messages)[self._last_conversation_history_len :]
+        token_obs = TokenObservation.from_token_manager(
+            getattr(agent.model, "token_manager", TokenManager())
+        )
+        tool_parse_errors = getattr(agent.model, "tool_parse_errors", None)
+        metrics: dict[str, Any] = {"message_count": len(step_messages)}
+        limiter = self._last_tool_limiter
+        if limiter is not None:
+            metrics["tool_iters"] = limiter.tool_iter_count
+            metrics["tool_calls"] = limiter.tool_call_count
+            metrics["cancelled_tool_calls"] = limiter.cancelled_tool_call_count
+        metrics.update(self.compute_metrics(agent.event_loop_metrics, tool_parse_errors=tool_parse_errors))
+        return Observation(
+            messages=step_messages,
+            tokens=token_obs,
+            metrics=metrics,
+            routed_experts=getattr(agent.model, "routed_experts", None),
+        )
 
     async def step(self, action: Action) -> StepResult:
         """Run one agent episode and return observation + reward + termination."""
@@ -113,6 +152,11 @@ class Environment:
             conversation_manager=self.get_conversation_manager(),
             callback_handler=PrintingCallbackHandler() if self.verbose else None,
         )
+        # Stash the live agent + limiter so a cancelled/timed-out step can still surface its
+        # partial state via `partial_observation()` (see that method + `__init__`).
+        self._last_agent = agent
+        self._last_tool_limiter = tool_limiter
+        self._last_conversation_history_len = len(conversation_history)
         error = None
         try:
             message = action.message if isinstance(action.message, str) else action.message["content"]
