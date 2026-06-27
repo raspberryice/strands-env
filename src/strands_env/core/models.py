@@ -79,6 +79,7 @@ def sglang_model_factory(
     return_logprob: bool = True,
     return_routed_experts: bool = False,
     enable_thinking: bool = True,
+    preserve_thinking: bool = False,
 ) -> ModelFactory:
     """Return a factory that creates `SGLangModel` instances.
 
@@ -90,6 +91,8 @@ def sglang_model_factory(
         return_logprob: Whether to return logprobs for each token.
         return_routed_experts: Whether to return MoE routed expert indices for routing replay.
         enable_thinking: Enable thinking mode for models whose chat template supports it.
+        preserve_thinking: Keep `<think>` blocks in history turns when re-rendering a conversation
+            (needed so a resumed/aborted-trajectory prefix re-renders to the original tokens).
     """
     if tool_parser is None:
         tool_parser = HermesToolParser()
@@ -102,6 +105,7 @@ def sglang_model_factory(
         return_logprob=return_logprob,
         return_routed_experts=return_routed_experts,
         enable_thinking=enable_thinking,
+        preserve_thinking=preserve_thinking,
     )
 
 
