@@ -80,6 +80,7 @@ def sglang_model_factory(
     return_routed_experts: bool = False,
     enable_thinking: bool = True,
     preserve_thinking: bool = False,
+    max_trajectory_tokens: int | None = None,
 ) -> ModelFactory:
     """Return a factory that creates `SGLangModel` instances.
 
@@ -93,6 +94,8 @@ def sglang_model_factory(
         enable_thinking: Enable thinking mode for models whose chat template supports it.
         preserve_thinking: Keep `<think>` blocks in history turns when re-rendering a conversation
             (needed so a resumed/aborted-trajectory prefix re-renders to the original tokens).
+        max_trajectory_tokens: Cap on cumulative trajectory tokens (prompt + all generation); clamps
+            each turn's `max_new_tokens` to the remaining budget. `None` disables (legacy).
     """
     if tool_parser is None:
         tool_parser = HermesToolParser()
@@ -106,6 +109,7 @@ def sglang_model_factory(
         return_routed_experts=return_routed_experts,
         enable_thinking=enable_thinking,
         preserve_thinking=preserve_thinking,
+        max_trajectory_tokens=max_trajectory_tokens,
     )
 
 
