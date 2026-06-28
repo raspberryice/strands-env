@@ -18,7 +18,7 @@ from unittest.mock import MagicMock, patch
 
 import boto3
 import pytest
-from strands_sglang import SGLangClient
+from strands_sglang import PrefixSeed, SGLangClient
 
 from strands_env.core.models import (
     DEFAULT_SAMPLING_PARAMS,
@@ -41,6 +41,18 @@ class TestSGLangModelFactory:
         model1 = factory()
         model2 = factory()
         assert model1 is not model2
+
+    def test_prefix_seed_passthrough(self):
+        """prefix_seed threads into SGLangModel, seeding its token_manager + message_count."""
+        seed = PrefixSeed(token_ids=[1, 2, 3], loss_mask=[0, 1, 1], logprobs=None, message_count=1)
+        factory = sglang_model_factory(
+            tokenizer=MagicMock(),
+            client=MagicMock(spec=SGLangClient),
+            prefix_seed=seed,
+        )
+        model = factory()
+        assert model.token_manager.token_ids == [1, 2, 3]
+        assert model.message_count == 1
 
 
 # ---------------------------------------------------------------------------

@@ -51,7 +51,7 @@ from strands.models import Model
 from strands.models.bedrock import BedrockModel
 from strands.models.openai import OpenAIModel
 from strands.types.content import Messages
-from strands_sglang import SGLangClient, SGLangModel, get_client, get_tokenizer
+from strands_sglang import PrefixSeed, SGLangClient, SGLangModel, get_client, get_tokenizer
 from strands_sglang.tool_parsers import HermesToolParser, ToolParser, get_tool_parser
 from transformers import PreTrainedTokenizerBase
 
@@ -81,6 +81,7 @@ def sglang_model_factory(
     enable_thinking: bool = True,
     preserve_thinking: bool = False,
     max_trajectory_tokens: int | None = None,
+    prefix_seed: PrefixSeed | None = None,
 ) -> ModelFactory:
     """Return a factory that creates `SGLangModel` instances.
 
@@ -96,6 +97,8 @@ def sglang_model_factory(
             (needed so a resumed/aborted-trajectory prefix re-renders to the original tokens).
         max_trajectory_tokens: Cap on cumulative trajectory tokens (prompt + all generation); clamps
             each turn's `max_new_tokens` to the remaining budget. `None` disables (legacy).
+        prefix_seed: Optional stored token stream to resume a trajectory from in-place (no re-render);
+            seeds the model's `token_manager` + `message_count`. See `strands_sglang.PrefixSeed`.
     """
     if tool_parser is None:
         tool_parser = HermesToolParser()
@@ -110,6 +113,7 @@ def sglang_model_factory(
         enable_thinking=enable_thinking,
         preserve_thinking=preserve_thinking,
         max_trajectory_tokens=max_trajectory_tokens,
+        prefix_seed=prefix_seed,
     )
 
 
