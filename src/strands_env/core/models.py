@@ -81,6 +81,7 @@ def sglang_model_factory(
     enable_thinking: bool = True,
     preserve_thinking: bool = False,
     max_trajectory_tokens: int | None = None,
+    max_segment_tokens: int | None = None,
     prefix_seed: PrefixSeed | None = None,
 ) -> ModelFactory:
     """Return a factory that creates `SGLangModel` instances.
@@ -97,6 +98,9 @@ def sglang_model_factory(
             (needed so a resumed/aborted-trajectory prefix re-renders to the original tokens).
         max_trajectory_tokens: Cap on cumulative trajectory tokens (prompt + all generation); clamps
             each turn's `max_new_tokens` to the remaining budget. `None` disables (legacy).
+        max_segment_tokens: Cap on per-segment tokens (the active context window between reseeds); the
+            compaction trigger. Phase 2 terminates as TRUNCATED at this threshold; Phase 3 reseeds in
+            place. `None` disables. See design/segment_tree_trajectories.md.
         prefix_seed: Optional stored token stream to resume a trajectory from in-place (no re-render);
             seeds the model's `token_manager` + `message_count`. See `strands_sglang.PrefixSeed`.
     """
@@ -113,6 +117,7 @@ def sglang_model_factory(
         enable_thinking=enable_thinking,
         preserve_thinking=preserve_thinking,
         max_trajectory_tokens=max_trajectory_tokens,
+        max_segment_tokens=max_segment_tokens,
         prefix_seed=prefix_seed,
     )
 
